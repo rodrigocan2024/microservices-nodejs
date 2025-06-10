@@ -1,6 +1,10 @@
+import "@opentelemetry/auto-instrumentations-node/register";
+
 import { fastify } from "fastify";
 import { randomUUID } from "node:crypto";
+import { setTimeout } from "node:timers/promises";
 import { fastifyCors } from "@fastify/cors";
+import { trace } from "@opentelemetry/api";
 import { z } from "zod";
 import {
   serializerCompiler,
@@ -10,8 +14,8 @@ import {
 
 import { db } from "../db/client.ts";
 import { schema } from "../db/schema/index.ts";
-import { channels } from "../broker/channels/index.ts";
 import { dispatchOrderCreated } from "../broker/messages/order-created.ts";
+import { tracer } from "../tracer/tracer.ts";
 
 const app = fastify().withTypeProvider<ZodTypeProvider>();
 
@@ -40,6 +44,22 @@ app.post(
 
     const orderId = randomUUID();
 
+    await db.insert(schema.orders).values({
+      id: randomUUID(),
+      customerId: "492a9272-15c2-49b2-bf36-735a1420caab",
+      amount,
+    });
+
+    const span = tracer.startSpan("aqui");
+
+    span.setAttribute("teste", "Hello World");
+
+    await setTimeout(2000);
+
+    span.end();
+
+    trace.getActiveSpan()?.setAttribute("order_id", orderId);
+
     dispatchOrderCreated({
       orderId,
       amount,
@@ -47,16 +67,6 @@ app.post(
         id: "492a9272-15c2-49b2-bf36-735a1420caab",
       },
     });
-
-    try {
-      await db.insert(schema.orders).values({
-        id: randomUUID(),
-        customerId: "492a9272-15c2-49b2-bf36-735a1420caab",
-        amount,
-      });
-    } catch (err) {
-      console.log(err);
-    }
 
     return reply.status(201).send();
   }
